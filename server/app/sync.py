@@ -86,6 +86,23 @@ def compute_offset_sec(video_start: datetime, points: list[GpxPoint]) -> float:
     return video_start.timestamp() - points[0].time.timestamp()
 
 
+def video_has_audio(path: Path) -> bool:
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "a:0",
+        "-show_entries",
+        "stream=codec_type",
+        "-of",
+        "csv=p=0",
+        str(path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    return result.returncode == 0 and "audio" in result.stdout
+
+
 def ffprobe_video(path: Path) -> tuple[int, int, float]:
     cmd = [
         "ffprobe",

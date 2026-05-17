@@ -12,6 +12,7 @@ from app.sync import (
     compute_offset_sec,
     ffprobe_video,
     read_video_start_time,
+    video_has_audio,
 )
 from app.worker import celery_app
 
@@ -112,7 +113,7 @@ def process_video(job_id: str) -> None:
         output_path = job_dir / "output.MOV"
         filter_complex = (
             f"[1:v]format=yuva420p,scale={width}:{height}[ov];"
-            f"[0:v][ov]overlay=0:0[out]"
+            f"[0:v][ov]overlay=0:0:format=auto[out]"
         )
         cmd = [
             "ffmpeg",
@@ -125,24 +126,24 @@ def process_video(job_id: str) -> None:
             filter_complex,
             "-map",
             "[out]",
-            "-map",
-            "0:a?",
-            "-map_metadata",
-            "0",
-            "-c:v",
-            "libx265",
-            "-tag:v",
-            "hvc1",
-            "-pix_fmt",
-            "yuv420p",
-            "-crf",
-            "18",
-            "-preset",
-            "medium",
-            "-c:a",
-            "copy",
-            str(output_path),
         ]
+        if video_has_audio(video_path):
+            cmd.extend(["-map", "0:a", "-c:a", "copy"])
+        cmd.extend(
+            [
+                "-map_metadata",
+                "0",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-crf",
+                "18",
+                "-preset",
+                "fast",
+                str(output_path),
+            ]
+        )
         _run_ffmpeg_with_progress(cmd, duration, job_id)
         update_job(job_id, status="done", progress=100)
     except Exception as exc:
