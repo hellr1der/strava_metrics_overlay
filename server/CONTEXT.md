@@ -52,25 +52,25 @@ process_video:
 docker compose up --build
 ```
 
-## Railway (два сервиса)
+## Railway (рекомендуется: один сервис)
 
-| Сервис | Config file | Команда |
-|--------|-------------|---------|
-| API | `railway.json` | `uvicorn ... --port $PORT` |
-| Worker | `worker.railway.json` | `celery -A app.worker worker --loglevel=info --concurrency=1` |
+| Сервис | Config | Старт |
+|--------|--------|-------|
+| **strava_metrics_overlay** | `railway.json` | `sh start.sh` (uvicorn + celery в одном контейнере) |
+| Redis | managed | `REDIS_URL` |
+| Volume | `/tmp/jobs` | `JOBS_DIR=/tmp/jobs` |
 
-Оба сервиса — один образ (`server/Dockerfile`), общий `REDIS_URL`.
+`server/start.sh` поднимает Celery в фоне и uvicorn на `$PORT` — общий диск для загрузки и обработки.
 
-### Worker (шаг 4)
+Отдельный сервис **worker** (`worker.railway.json`) не нужен; его можно удалить в Railway, чтобы не платить дважды.
 
-1. **+ New** → **GitHub Repo** → тот же репозиторий, ветка `main`.
-2. Переименовать сервис, например `worker`.
-3. **Settings → Config-as-code** → `worker.railway.json`.
-4. **Variables** → `REDIS_URL` = reference на Redis-сервис (не копировать URL вручную).
-5. **Networking** → публичный домен **не нужен** (можно выключить Public Networking).
-6. Deploy → в логах: `celery@... ready`.
+План Hobby: **1 GB+** RAM на API-сервисе (Playwright + ffmpeg + celery).
 
-План Hobby: для worker лучше **512 MB+** RAM (Playwright + ffmpeg).
+### Когда переходить на S3 (вариант B)
+
+- Несколько реплик API или worker на разных машинах
+- Видео > нескольких GB или долгое хранение результатов
+- Нужна отказоустойчивость: контейнер упал — файлы в бакете остались
 
 ## Ограничения
 
