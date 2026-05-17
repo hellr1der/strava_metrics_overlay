@@ -29,101 +29,101 @@
       ctx.restore();
     }
 
-  function renderFrame(ctx, metrics, w, h) {
-    ctx.clearRect(0, 0, w, h);
-    if (!metrics) return;
+    function renderFrame(ctx, metrics, w, h) {
+      ctx.clearRect(0, 0, w, h);
+      if (!metrics) return;
 
-    const scale = w / 1080;
-    const px = (n) => Math.round(n * scale);
+      const scale = w / 1080;
+      const px = (n) => Math.round(n * scale);
 
-    const speedY = h - Math.round(h * 0.13) - px(120);
-    const speedX = px(43);
-    const secBaseY = speedY + px(20) + px(52);
+      const speedY = h - Math.round(h * 0.13) - px(120);
+      const speedX = px(43);
+      const secBaseY = speedY + px(20) + px(52);
 
-    if (metrics.speed !== null && metrics.speed !== undefined) {
-      const speedStr = String(Math.round(metrics.speed));
-      let speedW = 0;
-      drawWithShadow(ctx, px, () => {
-        ctx.font = `700 ${px(120)}px ${FONT_FAMILY}`;
-        ctx.fillStyle = "#ffffff";
-        speedW = ctx.measureText(speedStr).width;
-        ctx.fillText(speedStr, speedX, speedY);
-      });
-      drawWithShadow(ctx, px, () => {
-        ctx.font = `400 ${px(36)}px ${FONT_FAMILY}`;
-        ctx.fillStyle = "rgba(255,255,255,0.5)";
-        ctx.fillText("km/h", speedX + speedW + px(8), speedY);
-      });
-    }
+      if (metrics.speed !== null && metrics.speed !== undefined) {
+        const speedStr = String(Math.round(metrics.speed));
+        let speedW = 0;
+        drawWithShadow(ctx, px, () => {
+          ctx.font = `700 ${px(120)}px ${FONT_FAMILY}`;
+          ctx.fillStyle = "#ffffff";
+          speedW = ctx.measureText(speedStr).width;
+          ctx.fillText(speedStr, speedX, speedY);
+        });
+        drawWithShadow(ctx, px, () => {
+          ctx.font = `400 ${px(36)}px ${FONT_FAMILY}`;
+          ctx.fillStyle = "rgba(255,255,255,0.5)";
+          ctx.fillText("km/h", speedX + speedW + px(8), speedY);
+        });
+      }
 
-    ctx.fillStyle = "rgba(255,255,255,0.25)";
-    ctx.fillRect(speedX, speedY + px(10), px(3), px(70));
+      ctx.fillStyle = "rgba(255,255,255,0.25)";
+      ctx.fillRect(speedX, speedY + px(10), px(3), px(70));
 
-    const secFont = `600 ${px(52)}px ${FONT_FAMILY}`;
-    const unitFont = `400 ${px(26)}px ${FONT_FAMILY}`;
-    const gap = px(32);
-    const xPower = speedX + px(14);
-    let nextX = xPower;
+      const secFont = `600 ${px(52)}px ${FONT_FAMILY}`;
+      const unitFont = `400 ${px(26)}px ${FONT_FAMILY}`;
+      const gap = px(32);
+      const xPower = speedX + px(14);
+      let nextX = xPower;
 
-    if (metrics.power !== null && metrics.power !== undefined) {
-      ctx.font = secFont;
+      if (metrics.power !== null && metrics.power !== undefined) {
+        ctx.font = secFont;
+        ctx.textAlign = "left";
+        const powerStr = String(Math.round(metrics.power));
+        drawWithShadow(ctx, px, () => {
+          ctx.font = secFont;
+          ctx.fillStyle = "#ffffff";
+          ctx.fillText(powerStr, xPower, secBaseY);
+        });
+        const powerW = ctx.measureText(powerStr).width;
+        drawWithShadow(ctx, px, () => {
+          ctx.font = unitFont;
+          ctx.fillStyle = "rgba(255,255,255,0.5)";
+          ctx.fillText("W", xPower + powerW + px(4), secBaseY);
+        });
+        ctx.font = unitFont;
+        const powerUnitW = ctx.measureText("W").width;
+        nextX = xPower + powerW + px(4) + powerUnitW + gap;
+      }
+
+      if (metrics.hr !== null && metrics.hr !== undefined) {
+        const xHr = nextX;
+        const hrStr = String(Math.round(metrics.hr));
+        ctx.font = secFont;
+        drawWithShadow(ctx, px, () => {
+          ctx.font = secFont;
+          ctx.fillStyle = "#ffffff";
+          ctx.fillText(hrStr, xHr, secBaseY);
+        });
+        const hrW = ctx.measureText(hrStr).width;
+        drawWithShadow(ctx, px, () => {
+          ctx.font = unitFont;
+          ctx.fillStyle = "rgba(255,255,255,0.5)";
+          ctx.fillText("BPM", xHr + hrW + px(4), secBaseY);
+        });
+        ctx.font = unitFont;
+        const hrUnitW = ctx.measureText("BPM").width;
+        nextX = xHr + hrW + px(4) + hrUnitW + gap;
+      }
+
+      if (metrics.cadence !== null && metrics.cadence !== undefined) {
+        const xRpm = nextX;
+        const cadStr = String(Math.round(metrics.cadence));
+        ctx.font = secFont;
+        drawWithShadow(ctx, px, () => {
+          ctx.font = secFont;
+          ctx.fillStyle = "#ffffff";
+          ctx.fillText(cadStr, xRpm, secBaseY);
+        });
+        const cadW = ctx.measureText(cadStr).width;
+        drawWithShadow(ctx, px, () => {
+          ctx.font = unitFont;
+          ctx.fillStyle = "rgba(255,255,255,0.5)";
+          ctx.fillText("RPM", xRpm + cadW + px(4), secBaseY);
+        });
+      }
+
       ctx.textAlign = "left";
-      const powerStr = String(Math.round(metrics.power));
-      drawWithShadow(ctx, px, () => {
-        ctx.font = secFont;
-        ctx.fillStyle = "#ffffff";
-        ctx.fillText(powerStr, xPower, secBaseY);
-      });
-      const powerW = ctx.measureText(powerStr).width;
-      drawWithShadow(ctx, px, () => {
-        ctx.font = unitFont;
-        ctx.fillStyle = "rgba(255,255,255,0.5)";
-        ctx.fillText("W", xPower + powerW + px(4), secBaseY);
-      });
-      ctx.font = unitFont;
-      const powerUnitW = ctx.measureText("W").width;
-      nextX = xPower + powerW + px(4) + powerUnitW + gap;
     }
-
-    if (metrics.hr !== null && metrics.hr !== undefined) {
-      const xHr = nextX;
-      const hrStr = String(Math.round(metrics.hr));
-      ctx.font = secFont;
-      drawWithShadow(ctx, px, () => {
-        ctx.font = secFont;
-        ctx.fillStyle = "#ffffff";
-        ctx.fillText(hrStr, xHr, secBaseY);
-      });
-      const hrW = ctx.measureText(hrStr).width;
-      drawWithShadow(ctx, px, () => {
-        ctx.font = unitFont;
-        ctx.fillStyle = "rgba(255,255,255,0.5)";
-        ctx.fillText("BPM", xHr + hrW + px(4), secBaseY);
-      });
-      ctx.font = unitFont;
-      const hrUnitW = ctx.measureText("BPM").width;
-      nextX = xHr + hrW + px(4) + hrUnitW + gap;
-    }
-
-    if (metrics.cadence !== null && metrics.cadence !== undefined) {
-      const xRpm = nextX;
-      const cadStr = String(Math.round(metrics.cadence));
-      ctx.font = secFont;
-      drawWithShadow(ctx, px, () => {
-        ctx.font = secFont;
-        ctx.fillStyle = "#ffffff";
-        ctx.fillText(cadStr, xRpm, secBaseY);
-      });
-      const cadW = ctx.measureText(cadStr).width;
-      drawWithShadow(ctx, px, () => {
-        ctx.font = unitFont;
-        ctx.fillStyle = "rgba(255,255,255,0.5)";
-        ctx.fillText("RPM", xRpm + cadW + px(4), secBaseY);
-      });
-    }
-
-    ctx.textAlign = "left";
-  }
 
     async function loadOverlayFonts() {
       await document.fonts.load(`700 100px ${FONT_FAMILY}`);
@@ -132,8 +132,12 @@
       await document.fonts.ready;
     }
 
+    /** Индекс в timeline (1 сэмпл/сек) для времени t от начала видео. */
     function metricsAt(timeline, t) {
-      const idx = Math.min(timeline.length - 1, Math.max(0, Math.floor(t)));
+      const idx = Math.min(
+        timeline.length - 1,
+        Math.max(0, Math.floor(t + 1e-6))
+      );
       const raw = timeline[idx];
       if (!raw) return null;
       return {
@@ -144,89 +148,30 @@
       };
     }
 
-    function selectMimeType() {
-      const candidates = [
-        "video/webm;codecs=vp8",
-        "video/webm;codecs=vp9",
-        "video/webm",
-      ];
-      for (const mimeType of candidates) {
-        if (MediaRecorder.isTypeSupported(mimeType)) return mimeType;
-      }
-      throw new Error("VP9 WebM не поддерживается");
-    }
+    let renderState = null;
+    let ctx = null;
 
-    function wait(ms) {
-      return new Promise((resolve) => setTimeout(resolve, ms));
-    }
+    window.rendererReady = false;
 
-    async function runExport() {
-      const data = window.overlayData;
-      if (!data) throw new Error("overlayData не задан");
-
-      const { timeline, width, height, duration, fps } = data;
+    window.initRenderer = async function initRenderer(data) {
+      renderState = data;
       const canvas = document.getElementById("c");
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d", { alpha: true });
-
+      canvas.width = data.width;
+      canvas.height = data.height;
+      ctx = canvas.getContext("2d", { alpha: true });
       await loadOverlayFonts();
+      window.rendererReady = true;
+    };
 
-      const mimeType = selectMimeType();
-      const stream = canvas.captureStream(fps);
-      const recorder = new MediaRecorder(stream, {
-        mimeType,
-        videoBitsPerSecond: 4_000_000,
-      });
-      const chunks = [];
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data);
-      };
-
-      const totalFrames = Math.ceil(duration * fps);
-      const frameDelay = 1000 / fps;
-      const stopped = new Promise((resolve) => {
-        recorder.onstop = resolve;
-      });
-
-      recorder.start();
-
-      for (let frame = 0; frame < totalFrames; frame++) {
-        const t = frame / fps;
-        const metrics = metricsAt(timeline, t);
-        renderFrame(ctx, metrics, width, height);
-        await wait(frameDelay);
+  /** Отрисовать кадр для времени t (секунды от начала видео). */
+    window.renderAt = function renderAt(t) {
+      if (!renderState || !ctx) {
+        throw new Error("Renderer not initialized");
       }
-
-      recorder.stop();
-      await stopped;
-
-      const blob = new Blob(chunks, { type: "video/webm" });
-      window.overlayBlob = blob;
-
-      const buffer = await blob.arrayBuffer();
-      const bytes = new Uint8Array(buffer);
-      let binary = "";
-      for (let i = 0; i < bytes.length; i++) {
-        binary += String.fromCharCode(bytes[i]);
-      }
-      window.overlayBlobBase64 = btoa(binary);
-      window.overlayDone = true;
-    }
-
-    window.overlayDone = false;
-    let _data = null;
-    Object.defineProperty(window, "overlayData", {
-      configurable: true,
-      get() { return _data; },
-      set(v) {
-        _data = v;
-        runExport().catch((err) => {
-          window.overlayError = String(err);
-          window.overlayDone = true;
-        });
-      },
-    });
+      const { timeline, width, height } = renderState;
+      const metrics = metricsAt(timeline, t);
+      renderFrame(ctx, metrics, width, height);
+    };
   </script>
 </body>
 </html>

@@ -69,6 +69,7 @@ def _build_mux_command(
         cmd.extend(["-map", "0:a", "-c:a", "copy"])
     cmd.extend(
         [
+            "-shortest",
             "-map_metadata",
             "0",
             "-c:v",

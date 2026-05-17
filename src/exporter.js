@@ -4,10 +4,6 @@ import { loadOverlayFonts, renderFrame } from "./overlay.js";
 const MIME_CANDIDATES = ["video/webm;codecs=vp9", "video/webm"];
 const FPS = 30;
 
-function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function selectMimeType() {
   for (const mimeType of MIME_CANDIDATES) {
     if (MediaRecorder.isTypeSupported(mimeType)) {
@@ -72,7 +68,8 @@ export async function exportOverlay({ videoEl, timeline, onProgress }) {
 
   verifyCanvasAlpha(ctx, canvas.width, canvas.height, "before record");
 
-  const stream = canvas.captureStream(FPS);
+  // captureStream(0) + requestFrame: без пауз по wall-clock (иначе WebM длиннее видео).
+  const stream = canvas.captureStream(0);
   const videoTrack = stream.getVideoTracks()[0];
   if (videoTrack) {
     console.log("captureStream video track:", videoTrack.label, videoTrack.getSettings());
@@ -93,7 +90,6 @@ export async function exportOverlay({ videoEl, timeline, onProgress }) {
   }
 
   const totalFrames = Math.ceil(duration * FPS);
-  const frameDelay = 1000 / FPS;
 
   const stopped = new Promise((resolve) => {
     recorder.onstop = resolve;
@@ -111,7 +107,9 @@ export async function exportOverlay({ videoEl, timeline, onProgress }) {
       console.log("Alpha check (should be 0):", pixel[3]);
     }
 
-    await wait(frameDelay);
+    if (videoTrack?.requestFrame) {
+      videoTrack.requestFrame();
+    }
     onProgress?.((frame + 1) / totalFrames);
   }
 
