@@ -137,15 +137,6 @@ def resolve_video_start_time(
     )
 
 
-def read_video_start_time(
-    video_path: Path,
-    manual: str | None,
-    sync_path: Path | None = None,
-) -> datetime:
-    dt, _ = resolve_video_start_time(video_path, manual, sync_path)
-    return dt
-
-
 def compute_offset_sec(video_start: datetime, points: list[GpxPoint]) -> float:
     return video_start.timestamp() - points[0].time.timestamp()
 

@@ -2,7 +2,7 @@
 
 ## Назначение
 
-Сервер принимает видео (MOV/MP4) и GPX, синхронизирует метрики по времени, рендерит прозрачный WebM-оверлей в headless Chrome (Playwright) и склеивает результат через ffmpeg.
+Сервер принимает видео (MOV/MP4) и GPX, синхронизирует метрики по времени, рендерит прозрачный оверлей (Playwright → PNG → VP9) и склеивает результат через ffmpeg.
 
 ## Компоненты
 
@@ -20,16 +20,15 @@ POST /process
   → Celery: process_video(job_id)
 
 process_video:
-  1. video_start_time: QuickTime creationdate → mvhd → start_time из формы
-  2. parse_gpx (скорость Haversine 10с, мощность 3с, каденс 3с)
-  3. offset = video_start - gpx_first_point
-  4. timeline (1 сэмпл/сек) → Playwright → overlay.webm
-  5. ffmpeg overlay + libx265 → output.MOV
+  1. video_start: sync.json / start_time → QuickTime → mvhd → ffprobe
+  2. parse_gpx (Strava namespace, сглаживание скорости/мощности/каденса)
+  3. timeline (1 сэмпл/сек) → Playwright PNG → overlay.webm (VP9 + alpha)
+  4. ffmpeg mux (libvpx-vp9 decode, overlay format=auto) → output.MOV
 ```
 
 ## API
 
-- `POST /process` — multipart: `video`, `gpx`, опционально `start_time` (ISO 8601)
+- `POST /process` — multipart: `video`, `gpx`; опционально `start_time`, `sync`
 - `GET /status/{job_id}` — `{ job_id, status, progress, error }`
 - `GET /result/{job_id}` — `output.MOV` при `status == "done"`
 - `DELETE /job/{job_id}` — удаление файлов и записи в Redis
@@ -40,9 +39,11 @@ process_video:
 
 ## Модули
 
-- `app/gpx.py` — парсинг и сглаживание метрик (из `export.py`)
+- `app/gpx.py` — парсинг и сглаживание метрик
 - `app/sync.py` — время видео, timeline, ffprobe
+- `app/mux.py` — ffmpeg: видео + WebM с альфой
 - `app/renderer.py` — Playwright + `static/overlay.html`
+- `export.py` (корень) — локальный CLI, импортирует `app.*`
 - `static/overlay.html` — `renderFrame` идентичен `src/overlay.js`
 
 ## Запуск
@@ -61,8 +62,6 @@ docker compose up --build
 | Volume | `/tmp/jobs` | `JOBS_DIR=/tmp/jobs` |
 
 `server/start.sh` поднимает Celery в фоне и uvicorn на `$PORT` — общий диск для загрузки и обработки.
-
-Отдельный сервис **worker** (`worker.railway.json`) не нужен; его можно удалить в Railway, чтобы не платить дважды.
 
 План Hobby: **1 GB+** RAM на API-сервисе (Playwright + ffmpeg + celery).
 

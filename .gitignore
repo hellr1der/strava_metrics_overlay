@@ -12,6 +12,7 @@ tmp/output/*
 *.MP4
 *.webm
 *.mkv
+sample/e2e-*.MOV
 
 # Шрифты (скачиваются вручную)
 fonts/*.ttf

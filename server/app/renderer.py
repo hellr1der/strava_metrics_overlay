@@ -54,10 +54,7 @@ async def render_overlay(
     height: int,
     duration: float,
 ) -> Path:
-    """
-    Покадровый рендер PNG → ffmpeg.
-    MediaRecorder писал в wall-clock и растягивал таймлайн метрик.
-    """
+    """Покадровый рендер PNG (альфа) → VP9 WebM → mux в tasks."""
     overlay_html = (STATIC_DIR / "overlay.html").resolve()
     overlay_url = overlay_html.as_uri()
     frames_dir = job_dir / "frames"

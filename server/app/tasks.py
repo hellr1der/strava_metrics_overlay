@@ -6,6 +6,7 @@ from pathlib import Path
 
 from app.gpx import parse_gpx
 from app.job_store import load_job_meta, save_job_meta, update_job
+from app.mux import build_overlay_mux_command
 from app.renderer import render_overlay_sync
 from app.sync import (
     assert_gpx_covers_video,
@@ -18,74 +19,6 @@ from app.sync import (
 from app.worker import celery_app
 
 FFMPEG_TIME_RE = re.compile(r"time=(\d{2}):(\d{2}):(\d{2}\.\d+)")
-
-
-def _pick_video_encoder() -> str:
-    result = subprocess.run(
-        ["ffmpeg", "-hide_banner", "-encoders"],
-        capture_output=True,
-        text=True,
-        errors="replace",
-    )
-    encoders = f"{result.stdout}\n{result.stderr}"
-    for name in ("libx264", "libx265"):
-        if f" {name}" in encoders or f"V.....{name}" in encoders:
-            return name
-    raise RuntimeError("ffmpeg без libx264/libx265 — проверьте пакет ffmpeg в образе")
-
-
-def _build_mux_command(
-    video_path: Path,
-    overlay_path: Path,
-    output_path: Path,
-    width: int,
-    height: int,
-    *,
-    with_audio: bool,
-) -> list[str]:
-    """Сборка видео + WebM-оверлей (PNG→VP9 с альфой, без colorkey)."""
-    filter_complex = (
-        f"[1:v]format=yuva420p,scale={width}:{height}[ov];"
-        f"[0:v][ov]overlay=0:0:format=auto[out]"
-    )
-    cmd = [
-        "ffmpeg",
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-y",
-        "-i",
-        str(video_path),
-        "-c:v",
-        "libvpx-vp9",
-        "-i",
-        str(overlay_path),
-        "-filter_complex",
-        filter_complex,
-        "-map",
-        "[out]",
-    ]
-    if with_audio:
-        cmd.extend(["-map", "0:a", "-c:a", "copy"])
-    cmd.extend(
-        [
-            "-shortest",
-            "-map_metadata",
-            "0",
-            "-c:v",
-            _pick_video_encoder(),
-            "-pix_fmt",
-            "yuv420p",
-            "-crf",
-            "18",
-            "-preset",
-            "medium",
-            "-f",
-            "mov",
-            str(output_path),
-        ]
-    )
-    return cmd
 
 
 def _find_video(job_dir: Path) -> Path:
@@ -204,7 +137,7 @@ def process_video(job_id: str) -> None:
 
         output_path = job_dir / "output.MOV"
         has_audio = video_has_audio(video_path)
-        cmd = _build_mux_command(
+        cmd = build_overlay_mux_command(
             video_path,
             overlay_path,
             output_path,
