@@ -56,10 +56,21 @@ docker compose up --build
 
 | Сервис | Config file | Команда |
 |--------|-------------|---------|
-| API | `railway.json` | CMD из Dockerfile (`PORT`) |
-| Worker | `worker.railway.json` | `celery -A app.worker worker --loglevel=info` |
+| API | `railway.json` | `uvicorn ... --port $PORT` |
+| Worker | `worker.railway.json` | `celery -A app.worker worker --loglevel=info --concurrency=1` |
 
-Оба сервиса — один образ (`server/Dockerfile`), общий `REDIS_URL`. В настройках worker-сервиса укажите **Config file** → `/worker.railway.json`.
+Оба сервиса — один образ (`server/Dockerfile`), общий `REDIS_URL`.
+
+### Worker (шаг 4)
+
+1. **+ New** → **GitHub Repo** → тот же репозиторий, ветка `main`.
+2. Переименовать сервис, например `worker`.
+3. **Settings → Config-as-code** → `worker.railway.json`.
+4. **Variables** → `REDIS_URL` = reference на Redis-сервис (не копировать URL вручную).
+5. **Networking** → публичный домен **не нужен** (можно выключить Public Networking).
+6. Deploy → в логах: `celery@... ready`.
+
+План Hobby: для worker лучше **512 MB+** RAM (Playwright + ffmpeg).
 
 ## Ограничения
 
