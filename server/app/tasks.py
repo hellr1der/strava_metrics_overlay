@@ -50,6 +50,8 @@ def _run_ffmpeg_with_progress(
     cmd: list[str],
     duration: float,
     job_id: str,
+    *,
+    log_path: Path | None = None,
 ) -> None:
     proc = subprocess.Popen(
         cmd,
@@ -77,9 +79,14 @@ def _run_ffmpeg_with_progress(
     proc.wait()
     if proc.returncode != 0:
         detail = "".join(stderr_tail).strip()
+        if log_path is not None:
+            log_path.write_text(
+                f"CMD: {' '.join(cmd)}\n\nSTDERR:\n{detail}",
+                encoding="utf-8",
+            )
         msg = f"ffmpeg завершился с кодом {proc.returncode}"
         if detail:
-            msg = f"{msg}: {detail[-500:]}"
+            msg = f"{msg}: {detail[-800:]}"
         raise RuntimeError(msg)
 
 
@@ -112,8 +119,8 @@ def process_video(job_id: str) -> None:
         overlay_path = job_dir / "overlay.webm"
         output_path = job_dir / "output.MOV"
         filter_complex = (
-            f"[1:v]format=yuva420p,scale={width}:{height}[ov];"
-            f"[0:v][ov]overlay=0:0:format=auto[out]"
+            f"[1:v]scale={width}:{height}[ov];"
+            f"[0:v][ov]overlay=0:0:shortest=1[out]"
         )
         cmd = [
             "ffmpeg",
@@ -141,10 +148,14 @@ def process_video(job_id: str) -> None:
                 "18",
                 "-preset",
                 "fast",
+                "-movflags",
+                "+faststart",
                 str(output_path),
             ]
         )
-        _run_ffmpeg_with_progress(cmd, duration, job_id)
+        _run_ffmpeg_with_progress(
+            cmd, duration, job_id, log_path=job_dir / "ffmpeg.log"
+        )
         update_job(job_id, status="done", progress=100)
     except Exception as exc:
         update_job(job_id, status="error", error=str(exc))
