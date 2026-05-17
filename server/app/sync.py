@@ -10,23 +10,36 @@ from pathlib import Path
 from app.gpx import GpxPoint, nearest_point, parse_iso_datetime
 
 EPOCH_1904 = datetime(1904, 1, 1, tzinfo=timezone.utc)
+MIN_CREATION = datetime(1990, 1, 1, tzinfo=timezone.utc)
+MAX_CREATION = datetime(2035, 1, 1, tzinfo=timezone.utc)
 ISO_DATE_RE = re.compile(
     rb"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}(?::?\d{2})?)?"
 )
+QUICKTIME_KEY = b"com.apple.quicktime.creationdate"
+
+
+def _is_plausible(dt: datetime) -> bool:
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    ts = dt.timestamp()
+    return MIN_CREATION.timestamp() <= ts <= MAX_CREATION.timestamp()
 
 
 def read_quicktime_creation_date(data: bytes) -> datetime | None:
-    key = b"com.apple.quicktime.creationdate"
+    """Как readCreationTimeFromQuickTime() в src/main.js."""
     idx = 0
+    scan_window = 512
     while True:
-        idx = data.find(key, idx)
+        idx = data.find(QUICKTIME_KEY, idx)
         if idx < 0:
             return None
-        chunk = data[idx + len(key) : idx + len(key) + 30]
+        chunk = data[idx + len(QUICKTIME_KEY) : idx + len(QUICKTIME_KEY) + scan_window]
         match = ISO_DATE_RE.search(chunk)
         if match:
             try:
-                return parse_iso_datetime(match.group(0).decode("utf-8"))
+                dt = parse_iso_datetime(match.group(0).decode("utf-8"))
+                if _is_plausible(dt):
+                    return dt
             except ValueError:
                 pass
         idx += 1
@@ -44,14 +57,84 @@ def read_mvhd_creation_date(data: bytes) -> datetime | None:
                 hi = int.from_bytes(data[i + 8 : i + 12], "big")
                 lo = int.from_bytes(data[i + 12 : i + 16], "big")
                 seconds = hi * 0x1_0000_0000 + lo
-                return datetime.fromtimestamp(seconds, tz=timezone.utc)
-            seconds = int.from_bytes(data[i + 8 : i + 12], "big")
-            if seconds == 0:
-                continue
-            return EPOCH_1904 + timedelta(seconds=seconds)
+                dt = datetime.fromtimestamp(seconds, tz=timezone.utc)
+            else:
+                seconds = int.from_bytes(data[i + 8 : i + 12], "big")
+                if seconds == 0:
+                    continue
+                dt = EPOCH_1904 + timedelta(seconds=seconds)
+            if _is_plausible(dt):
+                return dt.astimezone(timezone.utc)
         except (OverflowError, OSError, ValueError):
             continue
     return None
+
+
+def read_ffprobe_creation_time(video_path: Path) -> datetime | None:
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-show_entries",
+        "format_tags=creation_time:com.apple.quicktime.creationdate",
+        "-of",
+        "json",
+        str(video_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        return None
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+    tags = data.get("format", {}).get("tags", {}) or {}
+    for key in ("com.apple.quicktime.creationdate", "creation_time"):
+        raw = tags.get(key)
+        if not raw:
+            continue
+        try:
+            dt = parse_iso_datetime(str(raw))
+            if _is_plausible(dt):
+                return dt
+        except ValueError:
+            continue
+    return None
+
+
+def resolve_video_start_time(
+    video_path: Path,
+    manual: str | None = None,
+    sync_path: Path | None = None,
+) -> tuple[datetime, str]:
+    """
+    Время начала записи видео — та же цепочка, что во фронте:
+    sync.json / start_time (опционально) → QuickTime → mvhd → ffprobe.
+    """
+    if sync_path and sync_path.is_file():
+        data = json.loads(sync_path.read_text(encoding="utf-8"))
+        return parse_iso_datetime(data["video_start_time"]), "sync.json"
+
+    if manual:
+        return parse_iso_datetime(manual), "manual"
+
+    data = video_path.read_bytes()
+    qt = read_quicktime_creation_date(data)
+    if qt:
+        return qt, "quicktime"
+
+    mvhd = read_mvhd_creation_date(data)
+    if mvhd:
+        return mvhd, "mvhd"
+
+    ffprobe_dt = read_ffprobe_creation_time(video_path)
+    if ffprobe_dt:
+        return ffprobe_dt, "ffprobe"
+
+    raise ValueError(
+        "Не удалось определить время начала записи из метаданных видео. "
+        "Убедитесь, что GPX и видео с одной поездки, или передайте start_time."
+    )
 
 
 def read_video_start_time(
@@ -59,27 +142,8 @@ def read_video_start_time(
     manual: str | None,
     sync_path: Path | None = None,
 ) -> datetime:
-    if sync_path:
-        data = json.loads(sync_path.read_text(encoding="utf-8"))
-        return parse_iso_datetime(data["video_start_time"])
-
-    if manual:
-        return parse_iso_datetime(manual)
-
-    data = video_path.read_bytes()
-    qt = read_quicktime_creation_date(data)
-    if qt:
-        return qt
-    mvhd = read_mvhd_creation_date(data)
-    if mvhd:
-        if mvhd.tzinfo is None:
-            mvhd = mvhd.replace(tzinfo=timezone.utc)
-        return mvhd.astimezone(timezone.utc)
-
-    raise ValueError(
-        "Не удалось определить время начала записи видео. "
-        'Укажите вручную: start_time "2026-05-15T07:24:11Z"'
-    )
+    dt, _ = resolve_video_start_time(video_path, manual, sync_path)
+    return dt
 
 
 def compute_offset_sec(video_start: datetime, points: list[GpxPoint]) -> float:
@@ -137,10 +201,10 @@ def assert_gpx_covers_video(
     gpx_end_ts = points[-1].time.timestamp()
     if video_end_ts < gpx_start_ts or video_start.timestamp() > gpx_end_ts:
         raise ValueError(
-            "GPX не перекрывает время видео: "
+            "GPX не перекрывает время видео по метаданным файла: "
             f"видео {video_start.isoformat()} (+{duration_sec:.0f} с), "
             f"GPX {points[0].time.isoformat()} … {points[-1].time.isoformat()}. "
-            "Используйте GPX этой же поездки и sync.json из превью."
+            "Нужен GPX той же поездки или укажите start_time, если метаданные видео неверны."
         )
 
 
@@ -169,3 +233,17 @@ def build_metric_timeline(
                 }
             )
     return timeline
+
+
+def build_sync_payload(
+    video_start: datetime,
+    points: list[GpxPoint],
+    time_source: str,
+) -> dict:
+    """Тот же объект, что «Экспорт sync.json» в превью (для meta.json на сервере)."""
+    return {
+        "video_start_time": video_start.isoformat().replace("+00:00", "Z"),
+        "gpx_start_time": points[0].time.isoformat().replace("+00:00", "Z"),
+        "offset_sec": compute_offset_sec(video_start, points),
+        "time_source": time_source,
+    }

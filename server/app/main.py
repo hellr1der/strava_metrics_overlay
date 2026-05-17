@@ -42,8 +42,14 @@ def _job_dir(job_id: str) -> Path:
 async def process(
     video: UploadFile = File(...),
     gpx: UploadFile = File(...),
-    start_time: str | None = Form(default=None),
-    sync: UploadFile | None = File(default=None),
+    start_time: str | None = Form(
+        default=None,
+        description="Опционально: ISO 8601, если метаданные видео неверны",
+    ),
+    sync: UploadFile | None = File(
+        default=None,
+        description="Опционально: переопределить авто-синхронизацию",
+    ),
 ):
     max_bytes = MAX_VIDEO_SIZE_MB * 1024 * 1024
 
