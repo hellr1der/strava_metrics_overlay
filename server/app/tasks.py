@@ -43,12 +43,10 @@ def _build_mux_command(
     *,
     with_audio: bool,
 ) -> list[str]:
-    """Сборка видео + WebM-оверлей (как export.py --overlay, без -vcodec на входе)."""
-    # colorkey: MediaRecorder в headless Chrome даёт чёрный фон вместо альфы
+    """Сборка видео + WebM-оверлей (PNG→VP9 с альфой, без colorkey)."""
     filter_complex = (
-        f"[1:v]colorkey=0x000000:0.02:0.25,format=yuva420p,"
-        f"scale={width}:{height}[ov];"
-        f"[0:v][ov]overlay=0:0[out]"
+        f"[1:v]format=yuva420p,scale={width}:{height}[ov];"
+        f"[0:v][ov]overlay=0:0:format=auto[out]"
     )
     cmd = [
         "ffmpeg",
