@@ -2,77 +2,160 @@
 
 ## Назначение
 
-Сервер принимает видео (MOV/MP4) и GPX, синхронизирует метрики по времени, рендерит прозрачный оверлей (Playwright → PNG → VP9) и склеивает результат через ffmpeg.
+HTTP API: принимает видео (MOV/MP4) и GPX, в фоне накладывает метрики и отдаёт `output.MOV`.
 
-## Компоненты
+**Production:** https://stravametricsoverlay-production.up.railway.app
 
-| Сервис | Роль |
-|--------|------|
-| **api** | FastAPI: загрузка файлов, постановка задач, статус, выдача результата |
-| **worker** | Celery: парсинг GPX, рендер оверлея, ffmpeg |
-| **redis** | Брокер Celery + хранение статуса задач (`job:{id}`) |
+## Архитектура (один контейнер)
 
-## Поток обработки
-
+```text
+┌─────────────────────────────────────────┐
+│  start.sh (LF!)                         │
+│  ├── celery worker (фон)                │
+│  └── uvicorn app.main:app → :PORT       │
+└─────────────────────────────────────────┘
+         │                    │
+         ▼                    ▼
+    Redis (Celery +        JOBS_DIR/
+     job status)           {job_id}/
 ```
-POST /process
-  → /tmp/jobs/{job_id}/video.* + track.gpx
-  → Celery: process_video(job_id)
 
-process_video:
-  1. video_start: sync.json / start_time → QuickTime → mvhd → ffprobe
-  2. parse_gpx (Strava namespace, сглаживание скорости/мощности/каденса)
-  3. timeline (1 сэмпл/сек) → Playwright PNG → overlay.webm (VP9 + alpha)
-  4. ffmpeg mux (libvpx-vp9 decode, overlay format=auto) → output.MOV
+| Компонент | Роль |
+|-----------|------|
+| **FastAPI** | `POST /process`, статус, выдача файла |
+| **Celery** | `app.tasks.process_video` |
+| **Redis** | Брокер + `job:{id}` в `job_store` |
+| **Volume** | `/tmp/jobs` — видео, GPX, overlay, результат |
+
+Отдельный Railway-сервис worker **не используется** (нет shared disk с загрузками).
+
+## Поток `process_video`
+
+```text
+1. load_job_meta, find video.* + *.gpx
+2. resolve_video_start_time(video, start_time?, sync.json?)
+3. assert_gpx_covers_video(points, video_start, duration)
+4. save_job_meta(+ video_start, gpx_start, offset_sec, time_source)
+5. build_metric_timeline() — 1 sample/sec
+6. render_overlay_sync() — Playwright PNG 30fps → overlay.webm
+7. build_overlay_mux_command() — ffmpeg → output.MOV
 ```
+
+### Рендер оверлея (`renderer.py`)
+
+- Открывает `static/overlay.html` (file://)
+- `initRenderer({ timeline, width, height, duration, fps: 30 })`
+- Для каждого кадра: `renderAt(t)` → screenshot PNG (`omit_background=True`)
+- ffmpeg: `-framerate 30 -i %05d.png -t {duration} -c:v libvpx-vp9 -pix_fmt yuva420p`
+
+### Mux (`mux.py`)
+
+```text
+ffmpeg -i video \
+  -c:v libvpx-vp9 -i overlay.webm \
+  -filter_complex "[1:v]format=yuva420p,scale=WxH[ov];[0:v][ov]overlay=0:0:format=auto[out]" \
+  -map [out] [-map 0:a] -shortest -c:v libx264|libx265 ...
+```
+
+- **`libvpx-vp9` на входе overlay обязателен** — иначе альфа не читается, видео чёрное/пустое
+- **`colorkey` не используется** — ломает полупрозрачные тени
 
 ## API
 
-- `POST /process` — multipart: `video`, `gpx`; опционально `start_time`, `sync`
-- `GET /status/{job_id}` — `{ job_id, status, progress, error }`
-- `GET /result/{job_id}` — `output.MOV` при `status == "done"`
-- `DELETE /job/{job_id}` — удаление файлов и записи в Redis
+### `POST /process`
 
-Статусы: `queued` → `processing` → `done` | `error`
+| Поле | Тип | Обязательно | Описание |
+|------|-----|-------------|----------|
+| `video` | file | да | MOV/MP4 |
+| `gpx` | file | да | GPX той же тренировки |
+| `start_time` | form | нет | ISO 8601 override |
+| `sync` | file | нет | JSON с `video_start_time` |
 
-Прогресс: 10% GPX, 30% overlay, 60–99% ffmpeg, 100% готово.
+Ответ: `{ "job_id": "...", "status": "queued" }`
 
-## Модули
+### `GET /status/{job_id}`
 
-- `app/gpx.py` — парсинг и сглаживание метрик
-- `app/sync.py` — время видео, timeline, ffprobe
-- `app/mux.py` — ffmpeg: видео + WebM с альфой
-- `app/renderer.py` — Playwright + `static/overlay.html`
-- `export.py` (корень) — локальный CLI, импортирует `app.*`
-- `static/overlay.html` — `renderFrame` идентичен `src/overlay.js`
+```json
+{ "job_id": "...", "status": "processing", "progress": 30, "error": null }
+```
 
-## Запуск
+### `GET /result/{job_id}`
+
+Файл `output.MOV` при `status == "done"`.
+
+### `GET /health`
+
+`{ "status": "ok", "redis": "ok" }`
+
+## Модули `app/`
+
+| Файл | Содержание |
+|------|------------|
+| `main.py` | FastAPI routes |
+| `tasks.py` | Celery task, ffmpeg progress |
+| `gpx.py` | parse_gpx, Strava namespace, smoothing |
+| `sync.py` | video start chain, timeline, ffprobe |
+| `mux.py` | pick_video_encoder, build_overlay_mux_command |
+| `renderer.py` | Playwright PNG pipeline |
+| `job_store.py` | Redis + meta.json |
+| `config.py` | JOBS_DIR, MAX_VIDEO_SIZE_MB, REDIS_URL |
+
+`static/overlay.html` — кадровый рендер (`initRenderer` / `renderAt`), без MediaRecorder.
+
+## Переменные окружения
+
+| Переменная | По умолчанию | Описание |
+|------------|--------------|----------|
+| `REDIS_URL` | — | Celery + статусы |
+| `JOBS_DIR` | `/tmp/jobs` | Хранилище задач |
+| `PORT` | `8000` | uvicorn (Railway подставляет) |
+| `MAX_VIDEO_SIZE_MB` | `500` | Лимит загрузки |
+| `CELERY_CONCURRENCY` | `1` | Воркеры Celery |
+
+## Локальный запуск
 
 ```bash
-# Шрифт: скачать Oxanium-Bold.ttf в server/fonts/
+cd server
+# fonts/Oxanium.ttf — в Docker качается в Dockerfile
 docker compose up --build
 ```
 
-## Railway (рекомендуется: один сервис)
+## Railway
 
-| Сервис | Config | Старт |
-|--------|--------|-------|
-| **strava_metrics_overlay** | `railway.json` | `sh start.sh` (uvicorn + celery в одном контейнере) |
-| Redis | managed | `REDIS_URL` |
-| Volume | `/tmp/jobs` | `JOBS_DIR=/tmp/jobs` |
+| Параметр | Значение |
+|----------|----------|
+| Config | `railway.json` (корень репо) |
+| Dockerfile | `server/Dockerfile` |
+| Start | `sh start.sh` |
+| Health | `GET /health` |
+| Redis | managed plugin |
+| Volume | mount на `JOBS_DIR` |
 
-`server/start.sh` поднимает Celery в фоне и uvicorn на `$PORT` — общий диск для загрузки и обработки.
+**Важно:** Networking → target port = `$PORT` (часто 8080).
 
-План Hobby: **1 GB+** RAM на API-сервисе (Playwright + ffmpeg + celery).
+### Checklist после деплоя
 
-### Когда переходить на S3 (вариант B)
+```bash
+curl https://stravametricsoverlay-production.up.railway.app/health
 
-- Несколько реплик API или worker на разных машинах
-- Видео > нескольких GB или долгое хранение результатов
-- Нужна отказоустойчивость: контейнер упал — файлы в бакете остались
+curl -X POST .../process -F video=@test.MOV -F gpx=@for_test.gpx
+curl .../status/{job_id}
+curl -o out.MOV .../result/{job_id}
+```
+
+Ожидание: ~5 с видео, ~9 MB, метрики на 0:00 ~585 W / 149 BPM (для `for_test.gpx`).
 
 ## Ограничения
 
-- Время начала видео должно быть в метаданных файла или передано как `start_time`
-- Максимальный размер видео: `MAX_VIDEO_SIZE_MB` (500 по умолчанию)
-- Рендер оверлея требует Chromium (Playwright) в образе worker
+- Playwright + Chromium в образе (~1 GB+ RAM на Hobby)
+- Время записи в метаданных видео или `start_time` / `sync`
+- Один Celery concurrency = 1 длинная задача блокирует очередь
+- FIT не поддерживается
+
+## Масштабирование (позже)
+
+Переход на S3 для входов/выходов, если:
+
+- несколько реплик worker на разных машинах;
+- очень большие файлы или долгое хранение;
+- нужна отказоустойчивость при падении контейнера.
