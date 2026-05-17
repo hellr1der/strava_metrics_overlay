@@ -2,7 +2,8 @@
 
 | Файл | Описание |
 |------|----------|
-| `test.gpx` | GPX для проверки в браузере и CLI |
+| `test.gpx` | Синтетический GPX (CI/API smoke) |
+| `../for_test.gpx` | Реальный Strava GPX к `test.MOV` (тренировка Ušće) |
 | `test-alt.gpx` | Дополнительный GPX-трек |
 | `test-sync.json` | Пример параметров синхронизации для `export.py --sync` |
 

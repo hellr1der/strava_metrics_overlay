@@ -43,8 +43,22 @@ def parse_iso_datetime(text: str) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
+GPX_NS = "http://www.topografix.com/GPX/1/1"
+
+
 def local_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
+
+
+def find_extensions_element(trkpt) -> object | None:
+    """Strava/Garmin GPX: <extensions> в default namespace GPX 1.1."""
+    ext = trkpt.find(f"{{{GPX_NS}}}extensions")
+    if ext is not None:
+        return ext
+    for child in trkpt:
+        if local_name(child.tag) == "extensions":
+            return child
+    return None
 
 
 def parse_optional_number(text: str | None) -> float | None:
@@ -58,7 +72,7 @@ def parse_optional_number(text: str | None) -> float | None:
 
 def parse_extensions(trkpt) -> tuple[float | None, float | None, float | None]:
     hr = power = cadence = None
-    ext = trkpt.find("extensions")
+    ext = find_extensions_element(trkpt)
     if ext is None:
         return hr, power, cadence
     for el in ext.iter():
