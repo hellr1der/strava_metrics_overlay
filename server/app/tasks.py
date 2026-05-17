@@ -56,6 +56,8 @@ def _build_mux_command(
         "-y",
         "-i",
         str(video_path),
+        "-c:v",
+        "libvpx-vp9",
         "-i",
         str(overlay_path),
         "-filter_complex",
