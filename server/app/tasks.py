@@ -19,6 +19,71 @@ from app.worker import celery_app
 FFMPEG_TIME_RE = re.compile(r"time=(\d{2}):(\d{2}):(\d{2}\.\d+)")
 
 
+def _pick_video_encoder() -> str:
+    result = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-encoders"],
+        capture_output=True,
+        text=True,
+        errors="replace",
+    )
+    encoders = f"{result.stdout}\n{result.stderr}"
+    for name in ("libx264", "libx265"):
+        if f" {name}" in encoders or f"V.....{name}" in encoders:
+            return name
+    raise RuntimeError("ffmpeg без libx264/libx265 — проверьте пакет ffmpeg в образе")
+
+
+def _build_mux_command(
+    video_path: Path,
+    overlay_path: Path,
+    output_path: Path,
+    width: int,
+    height: int,
+    *,
+    with_audio: bool,
+) -> list[str]:
+    """Сборка видео + WebM-оверлей (как export.py --overlay, без -vcodec на входе)."""
+    filter_complex = (
+        f"[1:v]format=yuva420p,scale={width}:{height}[ov];"
+        f"[0:v][ov]overlay=0:0[out]"
+    )
+    cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-i",
+        str(video_path),
+        "-i",
+        str(overlay_path),
+        "-filter_complex",
+        filter_complex,
+        "-map",
+        "[out]",
+    ]
+    if with_audio:
+        cmd.extend(["-map", "0:a", "-c:a", "copy"])
+    cmd.extend(
+        [
+            "-map_metadata",
+            "0",
+            "-c:v",
+            _pick_video_encoder(),
+            "-pix_fmt",
+            "yuv420p",
+            "-crf",
+            "18",
+            "-preset",
+            "medium",
+            "-f",
+            "mov",
+            str(output_path),
+        ]
+    )
+    return cmd
+
+
 def _find_video(job_dir: Path) -> Path:
     for name in ("video.MOV", "video.MP4", "video.mov", "video.mp4"):
         p = job_dir / name
@@ -66,7 +131,7 @@ def _run_ffmpeg_with_progress(
     stderr_tail: list[str] = []
     for line in proc.stderr:
         stderr_tail.append(line)
-        if len(stderr_tail) > 40:
+        if len(stderr_tail) > 80:
             stderr_tail.pop(0)
         match = FFMPEG_TIME_RE.search(line)
         if not match or duration <= 0:
@@ -76,6 +141,9 @@ def _run_ffmpeg_with_progress(
         if pct != last_pct:
             update_job(job_id, progress=pct)
             last_pct = pct
+    remainder = proc.stderr.read()
+    if remainder:
+        stderr_tail.append(remainder)
     proc.wait()
     if proc.returncode != 0:
         detail = "".join(stderr_tail).strip()
@@ -117,41 +185,18 @@ def process_video(job_id: str) -> None:
         update_job(job_id, progress=30)
 
         overlay_path = job_dir / "overlay.webm"
+        if not overlay_path.is_file() or overlay_path.stat().st_size == 0:
+            raise RuntimeError("overlay.webm не создан или пуст")
+
         output_path = job_dir / "output.MOV"
-        filter_complex = (
-            f"[1:v]scale={width}:{height}[ov];"
-            f"[0:v][ov]overlay=0:0:shortest=1[out]"
-        )
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-i",
-            str(video_path),
-            "-i",
-            str(overlay_path),
-            "-filter_complex",
-            filter_complex,
-            "-map",
-            "[out]",
-        ]
-        if video_has_audio(video_path):
-            cmd.extend(["-map", "0:a", "-c:a", "copy"])
-        cmd.extend(
-            [
-                "-map_metadata",
-                "0",
-                "-c:v",
-                "libx264",
-                "-pix_fmt",
-                "yuv420p",
-                "-crf",
-                "18",
-                "-preset",
-                "fast",
-                "-movflags",
-                "+faststart",
-                str(output_path),
-            ]
+        has_audio = video_has_audio(video_path)
+        cmd = _build_mux_command(
+            video_path,
+            overlay_path,
+            output_path,
+            width,
+            height,
+            with_audio=has_audio,
         )
         _run_ffmpeg_with_progress(
             cmd, duration, job_id, log_path=job_dir / "ffmpeg.log"
