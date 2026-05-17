@@ -434,13 +434,10 @@ def build_metric_timeline(
                 {"speed": None, "power": None, "hr": None, "cadence": None}
             )
         else:
-            power = pt.power
-            if power is None:
-                power = 0
             timeline.append(
                 {
                     "speed": pt.speed,
-                    "power": power,
+                    "power": pt.power,
                     "hr": pt.hr,
                     "cadence": pt.cadence,
                 }

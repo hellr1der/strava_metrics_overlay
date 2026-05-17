@@ -125,6 +125,25 @@ def ffprobe_video(path: Path) -> tuple[int, int, float]:
     return width, height, duration
 
 
+def assert_gpx_covers_video(
+    points: list[GpxPoint],
+    video_start: datetime,
+    duration_sec: float,
+) -> None:
+    if not points:
+        raise ValueError("GPX пуст")
+    video_end_ts = video_start.timestamp() + duration_sec
+    gpx_start_ts = points[0].time.timestamp()
+    gpx_end_ts = points[-1].time.timestamp()
+    if video_end_ts < gpx_start_ts or video_start.timestamp() > gpx_end_ts:
+        raise ValueError(
+            "GPX не перекрывает время видео: "
+            f"видео {video_start.isoformat()} (+{duration_sec:.0f} с), "
+            f"GPX {points[0].time.isoformat()} … {points[-1].time.isoformat()}. "
+            "Используйте GPX этой же поездки и sync.json из превью."
+        )
+
+
 def build_metric_timeline(
     points: list[GpxPoint],
     video_start: datetime,
@@ -141,13 +160,10 @@ def build_metric_timeline(
                 {"speed": None, "power": None, "hr": None, "cadence": None}
             )
         else:
-            power = pt.power
-            if power is None:
-                power = 0
             timeline.append(
                 {
                     "speed": pt.speed,
-                    "power": power,
+                    "power": pt.power,
                     "hr": pt.hr,
                     "cadence": pt.cadence,
                 }

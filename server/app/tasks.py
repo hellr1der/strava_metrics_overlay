@@ -8,6 +8,7 @@ from app.gpx import parse_gpx
 from app.job_store import load_job_meta, update_job
 from app.renderer import render_overlay_sync
 from app.sync import (
+    assert_gpx_covers_video,
     build_metric_timeline,
     compute_offset_sec,
     ffprobe_video,
@@ -178,10 +179,11 @@ def process_video(job_id: str) -> None:
 
         video_start = read_video_start_time(video_path, start_time, sync_path)
         points = parse_gpx(gpx_path)
+        width, height, duration = ffprobe_video(video_path)
+        assert_gpx_covers_video(points, video_start, duration)
         update_job(job_id, progress=10)
 
         offset_sec = compute_offset_sec(video_start, points)
-        width, height, duration = ffprobe_video(video_path)
         timeline = build_metric_timeline(points, video_start, duration)
 
         render_overlay_sync(job_dir, timeline, width, height, duration)

@@ -63,27 +63,27 @@
     const unitFont = `400 ${px(26)}px ${FONT_FAMILY}`;
     const gap = px(32);
     const xPower = speedX + px(14);
-    const power = metrics.power ?? 0;
+    let nextX = xPower;
 
-    ctx.font = secFont;
-    ctx.textAlign = "left";
-
-    const powerStr = String(Math.round(power));
-    drawWithShadow(ctx, px, () => {
+    if (metrics.power !== null && metrics.power !== undefined) {
       ctx.font = secFont;
-      ctx.fillStyle = "#ffffff";
-      ctx.fillText(powerStr, xPower, secBaseY);
-    });
-    const powerW = ctx.measureText(powerStr).width;
-    drawWithShadow(ctx, px, () => {
+      ctx.textAlign = "left";
+      const powerStr = String(Math.round(metrics.power));
+      drawWithShadow(ctx, px, () => {
+        ctx.font = secFont;
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(powerStr, xPower, secBaseY);
+      });
+      const powerW = ctx.measureText(powerStr).width;
+      drawWithShadow(ctx, px, () => {
+        ctx.font = unitFont;
+        ctx.fillStyle = "rgba(255,255,255,0.5)";
+        ctx.fillText("W", xPower + powerW + px(4), secBaseY);
+      });
       ctx.font = unitFont;
-      ctx.fillStyle = "rgba(255,255,255,0.5)";
-      ctx.fillText("W", xPower + powerW + px(4), secBaseY);
-    });
-    ctx.font = unitFont;
-    const powerUnitW = ctx.measureText("W").width;
-
-    let nextX = xPower + powerW + px(4) + powerUnitW + gap;
+      const powerUnitW = ctx.measureText("W").width;
+      nextX = xPower + powerW + px(4) + powerUnitW + gap;
+    }
 
     if (metrics.hr !== null && metrics.hr !== undefined) {
       const xHr = nextX;
@@ -138,7 +138,7 @@
       if (!raw) return null;
       return {
         speed: raw.speed ?? null,
-        power: raw.power ?? 0,
+        power: raw.power ?? null,
         hr: raw.hr ?? null,
         cadence: raw.cadence ?? null,
       };
