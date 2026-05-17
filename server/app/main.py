@@ -9,15 +9,24 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from app.config import JOBS_DIR, MAX_VIDEO_SIZE_MB
-from app.job_store import delete_job, get_job, init_job, save_job_meta
-from app.tasks import process_video
+from app.job_store import (
+    RedisUnavailableError,
+    delete_job,
+    get_job,
+    init_job,
+    ping_redis,
+    save_job_meta,
+)
+from app.queue import QueueUnavailableError, enqueue_process_video
 
 app = FastAPI(title="GPX Video Overlay API")
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    body: dict[str, str] = {"status": "ok"}
+    body["redis"] = "ok" if ping_redis() else "unavailable"
+    return body
 
 
 @app.on_event("startup")
@@ -59,15 +68,22 @@ async def process(
             await f.write(chunk)
 
     save_job_meta(job_dir, {"start_time": start_time})
-    init_job(job_id)
-    process_video.delay(job_id)
+    try:
+        init_job(job_id)
+        enqueue_process_video(job_id)
+    except (RedisUnavailableError, QueueUnavailableError) as exc:
+        shutil.rmtree(job_dir, ignore_errors=True)
+        raise HTTPException(503, f"Очередь недоступна: {exc}") from exc
 
     return {"job_id": job_id, "status": "queued"}
 
 
 @app.get("/status/{job_id}")
 async def status(job_id: str):
-    job = get_job(job_id)
+    try:
+        job = get_job(job_id)
+    except RedisUnavailableError as exc:
+        raise HTTPException(503, f"Redis недоступен: {exc}") from exc
     if not job:
         raise HTTPException(404, "Задача не найдена")
     return job
@@ -75,7 +91,10 @@ async def status(job_id: str):
 
 @app.get("/result/{job_id}")
 async def result(job_id: str):
-    job = get_job(job_id)
+    try:
+        job = get_job(job_id)
+    except RedisUnavailableError as exc:
+        raise HTTPException(503, f"Redis недоступен: {exc}") from exc
     if not job or job["status"] != "done":
         raise HTTPException(404, "Результат недоступен")
 
@@ -95,5 +114,8 @@ async def remove_job(job_id: str):
     job_dir = _job_dir(job_id)
     if job_dir.is_dir():
         shutil.rmtree(job_dir, ignore_errors=True)
-    delete_job(job_id)
+    try:
+        delete_job(job_id)
+    except RedisUnavailableError:
+        pass
     return {"job_id": job_id, "deleted": True}

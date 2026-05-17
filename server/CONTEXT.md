@@ -52,6 +52,15 @@ process_video:
 docker compose up --build
 ```
 
+## Railway (два сервиса)
+
+| Сервис | Config file | Команда |
+|--------|-------------|---------|
+| API | `railway.json` | CMD из Dockerfile (`PORT`) |
+| Worker | `worker.railway.json` | `celery -A app.worker worker --loglevel=info` |
+
+Оба сервиса — один образ (`server/Dockerfile`), общий `REDIS_URL`. В настройках worker-сервиса укажите **Config file** → `/worker.railway.json`.
+
 ## Ограничения
 
 - Время начала видео должно быть в метаданных файла или передано как `start_time`
