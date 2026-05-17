@@ -145,7 +145,11 @@
     }
 
     function selectMimeType() {
-      const candidates = ["video/webm;codecs=vp9", "video/webm"];
+      const candidates = [
+        "video/webm;codecs=vp8",
+        "video/webm;codecs=vp9",
+        "video/webm",
+      ];
       for (const mimeType of candidates) {
         if (MediaRecorder.isTypeSupported(mimeType)) return mimeType;
       }
