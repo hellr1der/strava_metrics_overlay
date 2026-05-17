@@ -129,14 +129,13 @@ def build_metric_timeline(
     points: list[GpxPoint],
     video_start: datetime,
     duration_sec: float,
-    offset_sec: float,
 ) -> list[dict]:
+    """Как getMetricAt() во фронте: video_start + t сек → ближайшая точка GPX."""
     seconds = max(1, int(math.ceil(duration_sec)))
     timeline = []
     for t in range(seconds):
-        absolute = video_start.timestamp() + t
-        gpx_time = datetime.fromtimestamp(absolute + offset_sec, tz=timezone.utc)
-        pt = nearest_point(points, gpx_time)
+        target = datetime.fromtimestamp(video_start.timestamp() + t, tz=timezone.utc)
+        pt = nearest_point(points, target)
         if pt is None:
             timeline.append(
                 {"speed": None, "power": None, "hr": None, "cadence": None}

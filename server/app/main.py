@@ -43,6 +43,7 @@ async def process(
     video: UploadFile = File(...),
     gpx: UploadFile = File(...),
     start_time: str | None = Form(default=None),
+    sync: UploadFile | None = File(default=None),
 ):
     max_bytes = MAX_VIDEO_SIZE_MB * 1024 * 1024
 
@@ -67,7 +68,14 @@ async def process(
         while chunk := await gpx.read(64 * 1024):
             await f.write(chunk)
 
-    save_job_meta(job_dir, {"start_time": start_time})
+    meta: dict = {}
+    if start_time:
+        meta["start_time"] = start_time
+    if sync is not None:
+        async with aiofiles.open(job_dir / "sync.json", "wb") as f:
+            while chunk := await sync.read(64 * 1024):
+                await f.write(chunk)
+    save_job_meta(job_dir, meta)
     try:
         init_job(job_id)
         enqueue_process_video(job_id)

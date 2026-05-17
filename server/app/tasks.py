@@ -43,8 +43,10 @@ def _build_mux_command(
     with_audio: bool,
 ) -> list[str]:
     """Сборка видео + WebM-оверлей (как export.py --overlay, без -vcodec на входе)."""
+    # colorkey: MediaRecorder в headless Chrome даёт чёрный фон вместо альфы
     filter_complex = (
-        f"[1:v]format=yuva420p,scale={width}:{height}[ov];"
+        f"[1:v]colorkey=0x000000:0.02:0.25,format=yuva420p,"
+        f"scale={width}:{height}[ov];"
         f"[0:v][ov]overlay=0:0[out]"
     )
     cmd = [
@@ -170,16 +172,17 @@ def process_video(job_id: str) -> None:
         video_path = _find_video(job_dir)
         gpx_path = _find_gpx(job_dir)
         start_time = meta.get("start_time")
+        sync_path = job_dir / "sync.json"
+        if not sync_path.is_file():
+            sync_path = None
 
-        video_start = read_video_start_time(video_path, start_time)
+        video_start = read_video_start_time(video_path, start_time, sync_path)
         points = parse_gpx(gpx_path)
         update_job(job_id, progress=10)
 
         offset_sec = compute_offset_sec(video_start, points)
         width, height, duration = ffprobe_video(video_path)
-        timeline = build_metric_timeline(
-            points, video_start, duration, offset_sec
-        )
+        timeline = build_metric_timeline(points, video_start, duration)
 
         render_overlay_sync(job_dir, timeline, width, height, duration)
         update_job(job_id, progress=30)

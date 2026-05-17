@@ -38,6 +38,9 @@ async def render_overlay(
             ],
         )
         page = await browser.new_page()
+        await page.add_init_script(
+            "document.documentElement.style.background = 'transparent';"
+        )
         await page.goto(overlay_url, wait_until="load")
         await page.evaluate(
             "(data) => { window.overlayData = data; }",
