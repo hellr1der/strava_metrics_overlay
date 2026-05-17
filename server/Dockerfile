@@ -10,8 +10,8 @@ RUN playwright install-deps chromium
 
 COPY server/ .
 
-RUN mkdir -p /app/fonts && wget -q -O /app/fonts/Oxanium-Bold.ttf \
-    "https://github.com/google/fonts/raw/main/ofl/oxanium/Oxanium-Bold.ttf"
+RUN mkdir -p /app/fonts && wget -q -O /app/fonts/Oxanium.ttf \
+    "https://raw.githubusercontent.com/google/fonts/main/ofl/oxanium/Oxanium%5Bwght%5D.ttf"
 
 RUN chmod +x start.sh
 
