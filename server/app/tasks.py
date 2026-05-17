@@ -60,7 +60,11 @@ def _run_ffmpeg_with_progress(
     )
     assert proc.stderr is not None
     last_pct = -1
+    stderr_tail: list[str] = []
     for line in proc.stderr:
+        stderr_tail.append(line)
+        if len(stderr_tail) > 40:
+            stderr_tail.pop(0)
         match = FFMPEG_TIME_RE.search(line)
         if not match or duration <= 0:
             continue
@@ -71,7 +75,11 @@ def _run_ffmpeg_with_progress(
             last_pct = pct
     proc.wait()
     if proc.returncode != 0:
-        raise RuntimeError(f"ffmpeg завершился с кодом {proc.returncode}")
+        detail = "".join(stderr_tail).strip()
+        msg = f"ffmpeg завершился с кодом {proc.returncode}"
+        if detail:
+            msg = f"{msg}: {detail[-500:]}"
+        raise RuntimeError(msg)
 
 
 @celery_app.task(name="app.tasks.process_video")
@@ -111,8 +119,6 @@ def process_video(job_id: str) -> None:
             "-y",
             "-i",
             str(video_path),
-            "-vcodec",
-            "libvpx-vp9",
             "-i",
             str(overlay_path),
             "-filter_complex",
@@ -120,11 +126,15 @@ def process_video(job_id: str) -> None:
             "-map",
             "[out]",
             "-map",
-            "0:a",
+            "0:a?",
             "-map_metadata",
             "0",
             "-c:v",
             "libx265",
+            "-tag:v",
+            "hvc1",
+            "-pix_fmt",
+            "yuv420p",
             "-crf",
             "18",
             "-preset",
