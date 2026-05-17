@@ -15,6 +15,11 @@ from app.tasks import process_video
 app = FastAPI(title="GPX Video Overlay API")
 
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
 @app.on_event("startup")
 def ensure_jobs_dir() -> None:
     JOBS_DIR.mkdir(parents=True, exist_ok=True)
