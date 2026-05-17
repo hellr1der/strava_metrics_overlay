@@ -1,0 +1,37 @@
+# Временные и пользовательские файлы
+tmp/jobs/*
+tmp/uploads/*
+tmp/output/*
+!tmp/**/.gitkeep
+!tmp/README.md
+
+# Медиа (не коммитить)
+*.mov
+*.MOV
+*.mp4
+*.MP4
+*.webm
+*.mkv
+
+# Шрифты (скачиваются вручную)
+fonts/*.ttf
+server/fonts/*.ttf
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.*
+
+# Node / IDE
+node_modules/
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+
+# Docker
+server/jobs_data/

@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Strava Overlay</title>
+  <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --border: #2a2f3d;
+      --text: #e8eaed;
+      --muted: #8b919e;
+      --accent: #fc4c02;
+      --accent-dim: #c43d02;
+      --success: #3dd68c;
+      --warning: #f5a623;
+      --error: #f56565;
+      --radius: 10px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    header {
+      padding: 1.5rem 1.5rem 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    header h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    header p {
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-top: 0.25rem;
+    }
+
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 1.5rem;
+    }
+
+    .upload-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    @media (max-width: 600px) {
+      .upload-grid { grid-template-columns: 1fr; }
+    }
+
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      padding: 2rem 1rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      position: relative;
+    }
+
+    .drop-zone:hover,
+    .drop-zone.drag-over {
+      border-color: var(--accent);
+      background: #1f2330;
+    }
+
+    .drop-zone.loaded {
+      border-color: var(--success);
+      border-style: solid;
+    }
+
+    .drop-zone .icon {
+      font-size: 1.75rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .drop-zone .label {
+      font-weight: 500;
+      font-size: 0.9rem;
+    }
+
+    .drop-zone .hint {
+      color: var(--muted);
+      font-size: 0.78rem;
+      margin-top: 0.35rem;
+    }
+
+    .drop-zone .filename {
+      color: var(--success);
+      font-size: 0.8rem;
+      margin-top: 0.5rem;
+      word-break: break-all;
+    }
+
+    .drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    .player-section {
+      display: none;
+      margin-top: 1.5rem;
+    }
+
+    .player-section.visible { display: block; }
+
+    .video-wrapper {
+      width: 100%;
+      border-radius: var(--radius);
+      background: #000;
+    }
+
+    .video-container {
+      position: relative;
+      overflow: hidden;
+      width: 100%;
+    }
+
+    .video-container video {
+      display: block;
+      width: 100%;
+    }
+
+    .status-panel {
+      margin-top: 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem 1.25rem;
+      font-size: 0.85rem;
+    }
+
+    .status-panel h3 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 0.6rem;
+    }
+
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.25rem 0;
+    }
+
+    .status-row .key { color: var(--muted); }
+    .status-row .val { font-variant-numeric: tabular-nums; }
+
+    .export-sync {
+      margin-top: 1rem;
+      display: none;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .export-sync.visible { display: flex; }
+
+    .export-sync button {
+      width: 100%;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.65rem 1rem;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .export-sync button:hover:not(:disabled) { background: var(--accent-dim); }
+
+    .export-sync button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .export-webm-progress {
+      display: none;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .export-webm-progress.visible { display: flex; }
+
+    .export-webm-progress .progress-track {
+      height: 6px;
+      background: var(--bg);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .export-webm-progress .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--success);
+      border-radius: 3px;
+      transition: width 0.15s ease;
+    }
+
+    .export-webm-progress .progress-label {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .alert {
+      margin-top: 1rem;
+      padding: 0.75rem 1rem;
+      border-radius: var(--radius);
+      font-size: 0.85rem;
+      display: none;
+    }
+
+    .alert.visible { display: block; }
+
+    .alert.warning {
+      background: rgba(245, 166, 35, 0.12);
+      border: 1px solid rgba(245, 166, 35, 0.35);
+      color: var(--warning);
+    }
+
+    .alert.error {
+      background: rgba(245, 101, 101, 0.12);
+      border: 1px solid rgba(245, 101, 101, 0.35);
+      color: var(--error);
+    }
+
+    .manual-time {
+      margin-top: 0.75rem;
+      display: none;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .manual-time.visible { display: flex; }
+
+    .manual-time label {
+      font-size: 0.85rem;
+      color: var(--text);
+    }
+
+    .manual-time input[type="datetime-local"] {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 0.4rem 0.6rem;
+      font-size: 0.85rem;
+    }
+
+    .manual-time button {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 0.4rem 1rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+      font-weight: 500;
+    }
+
+    .manual-time button:hover { background: var(--accent-dim); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Strava Overlay</h1>
+    <p>Наложение скорости из GPX на видео тренировки</p>
+  </header>
+
+  <main>
+    <div class="upload-grid">
+      <div class="drop-zone" id="gpx-zone" data-type="gpx">
+        <div class="icon">📍</div>
+        <div class="label">GPX файл</div>
+        <div class="hint">Перетащите или нажмите для выбора</div>
+        <div class="filename" id="gpx-filename"></div>
+        <input type="file" accept=".gpx,application/gpx+xml" id="gpx-input">
+      </div>
+
+      <div class="drop-zone" id="video-zone" data-type="video">
+        <div class="icon">🎬</div>
+        <div class="label">Видео</div>
+        <div class="hint">MP4/MOV с сохранёнными метаданными</div>
+        <div class="filename" id="video-filename"></div>
+        <input type="file" accept="video/*,.mp4,.mov" id="video-input">
+      </div>
+    </div>
+
+    <div class="alert error" id="error-alert"></div>
+    <div class="alert warning" id="warning-alert">
+      Не удалось прочитать время начала записи из метаданных видео.
+      Укажите его вручную:
+      <div class="manual-time" id="manual-time">
+        <label for="manual-datetime">Начало записи:</label>
+        <input type="datetime-local" id="manual-datetime" step="1">
+        <button type="button" id="manual-apply">Применить</button>
+      </div>
+    </div>
+
+    <section class="player-section" id="player-section">
+      <div class="video-wrapper">
+        <div class="video-container">
+          <video id="video" controls playsinline></video>
+        </div>
+      </div>
+
+      <div class="status-panel" id="status-panel">
+        <h3>Синхронизация</h3>
+        <div class="status-row">
+          <span class="key">Время старта видео</span>
+          <span class="val" id="status-video-start">—</span>
+        </div>
+        <div class="status-row">
+          <span class="key">Время старта видео (UTC)</span>
+          <span class="val" id="status-video-start-utc">—</span>
+        </div>
+        <div class="status-row">
+          <span class="key">Источник времени</span>
+          <span class="val" id="status-time-source">—</span>
+        </div>
+        <div class="status-row">
+          <span class="key">Время первой точки GPX</span>
+          <span class="val" id="status-gpx-start">—</span>
+        </div>
+        <div class="status-row">
+          <span class="key">Оффсет</span>
+          <span class="val" id="status-offset">—</span>
+        </div>
+        <div class="export-sync" id="export-sync">
+          <button type="button" id="export-sync-btn">Экспорт sync.json</button>
+          <button type="button" id="export-webm-btn">Экспорт WebM</button>
+          <div class="export-webm-progress" id="export-webm-progress">
+            <div class="progress-track">
+              <div class="progress-fill" id="export-webm-progress-fill"></div>
+            </div>
+            <span class="progress-label" id="export-webm-status">Рендеринг: 0%</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

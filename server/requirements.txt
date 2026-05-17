@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+celery[redis]
+redis
+playwright
+python-multipart
+aiofiles

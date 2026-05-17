@@ -1,0 +1,33 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+    volumes:
+      - ./static:/app/static
+      - ./fonts:/app/fonts
+      - jobs_data:/tmp/jobs
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - JOBS_DIR=/tmp/jobs
+
+  worker:
+    build: .
+    command: celery -A app.worker worker --loglevel=info
+    depends_on:
+      - redis
+    volumes:
+      - ./static:/app/static
+      - ./fonts:/app/fonts
+      - jobs_data:/tmp/jobs
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - JOBS_DIR=/tmp/jobs
+
+  redis:
+    image: redis:7-alpine
+
+volumes:
+  jobs_data:
