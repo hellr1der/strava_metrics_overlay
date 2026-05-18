@@ -4,6 +4,7 @@ import json
 import math
 import re
 import subprocess
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -156,6 +157,47 @@ def video_has_audio(path: Path) -> bool:
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     return result.returncode == 0 and "audio" in result.stdout
+
+
+@dataclass(frozen=True)
+class VideoColorInfo:
+    primaries: str
+    transfer: str
+    space: str
+
+
+_HDR_TRANSFERS = frozenset(
+    {"arib-std-b67", "smpte2084", "bt2020-10", "bt2020-12"}
+)
+
+
+def is_hdr_color(color: VideoColorInfo) -> bool:
+    if color.primaries == "bt2020":
+        return True
+    return color.transfer in _HDR_TRANSFERS
+
+
+def ffprobe_video_color(path: Path) -> VideoColorInfo:
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=color_primaries,color_transfer,color_space",
+        "-of",
+        "json",
+        str(path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    stream = json.loads(result.stdout)["streams"][0]
+    primaries = stream.get("color_primaries") or "bt709"
+    transfer = stream.get("color_transfer") or "bt709"
+    space = stream.get("color_space")
+    if not space or space == "unknown":
+        space = "bt2020nc" if primaries == "bt2020" else "bt709"
+    return VideoColorInfo(primaries=primaries, transfer=transfer, space=space)
 
 
 def ffprobe_video(path: Path) -> tuple[int, int, float]:
